@@ -20,7 +20,7 @@ exports.register = async (req, res) => {
 // Login (genera JWT)
 exports.login = async (req, res) => {
   const { email, password } = req.body;
-  const user = await User.findOne({ where: { email }, include: 'Role' });
+  const user = await User.findOne({ where: { email }, include: 'Roles' });
   if (!user || !(await bcrypt.compare(password, user.password))) {
     return res.status(401).json({ message: 'Credenciales inválidas' });
   }

@@ -1,6 +1,5 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const Role = require('../models/Role');
 
 module.exports = async function(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -9,9 +8,11 @@ module.exports = async function(req, res, next) {
   const token = authHeader.split(' ')[1];
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = await User.findByPk(payload.id, { include: Role });
+    // <-- Cambiado a 'Roles' en plural
+    req.user = await User.findByPk(payload.id, { include: 'Roles' });
+    if (!req.user) return res.status(401).json({ message: 'Usuario no encontrado' });
     next();
-  } catch {
+  } catch (err) {
     res.status(401).json({ message: 'Token inválido' });
   }
 };

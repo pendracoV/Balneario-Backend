@@ -7,14 +7,23 @@ const User = sequelize.define('User', {
   nombre:   { type: DataTypes.STRING, allowNull: false },
   email:    { type: DataTypes.STRING, unique: true, allowNull: false },
   password: { type: DataTypes.STRING, allowNull: false },
-  // quitamos roleId
 }, {
   underscored: true,
   timestamps: false
 });
 
-// Asociación muchos-a-muchos
-User.belongsToMany(Role, { through: 'user_roles', foreignKey: 'user_id' });
-Role.belongsToMany(User, { through: 'user_roles', foreignKey: 'role_id' });
+// Asociación muchos-a-muchos con alias
+User.belongsToMany(Role, {
+  through: 'user_roles',
+  foreignKey: 'user_id',
+  otherKey: 'role_id',
+  as: 'Roles'              
+});
+Role.belongsToMany(User, {
+  through: 'user_roles',
+  foreignKey: 'role_id',
+  otherKey: 'user_id',
+  as: 'Users'
+});
 
 module.exports = User;
