@@ -7,14 +7,18 @@ const sendEmail = require('../utils/email');
 const { Op } = require('sequelize'); 
 
 // REQ-1: Registro
-exports.register = async (req, res) => {
-  const { nombre, email, password, tipo } = req.body;
-  const role = await Role.findOne({ where: { name: tipo } });
-  if (!role) return res.status(400).json({ message: 'Tipo de usuario inválido' });
-
-  const hash = await bcrypt.hash(password, 10);
-  const user = await User.create({ nombre, email, password: hash, roleId: role.id });
-  res.status(201).json({ id: user.id, nombre: user.nombre, email: user.email });
+exports.register = async (req, res, next) => {
+  try {
+    const { nombre, email, password } = req.body;
+    const clienteRole = await Role.findOne({ where: { name: 'cliente' } });
+    const hash = await bcrypt.hash(password, 10);
+    const user = await User.create({ nombre, email, password: hash });
+    await user.setRoles([clienteRole]);
+    const created = await User.findByPk(user.id, { include: 'Roles' });
+    res.status(201).json(created);
+  } catch (err) {
+    next(err);
+  }
 };
 
 // Login (genera JWT)
