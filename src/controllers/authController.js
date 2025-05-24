@@ -6,15 +6,38 @@ const Role = require('../models/Role');
 const sendEmail = require('../utils/email');
 const { Op } = require('sequelize'); 
 
-// REQ-1: Registro
-exports.register = async (req, res) => {
-  const { nombre, email, password, tipo } = req.body;
-  const role = await Role.findOne({ where: { name: tipo } });
-  if (!role) return res.status(400).json({ message: 'Tipo de usuario inválido' });
+exports.register = async (req, res, next) => {
+  try {
+    const { nombre, email, password, tipo } = req.body;
 
-  const hash = await bcrypt.hash(password, 10);
-  const user = await User.create({ nombre, email, password: hash, roleId: role.id });
-  res.status(201).json({ id: user.id, nombre: user.nombre, email: user.email });
+    // 1) Validar rol
+    const role = await Role.findOne({ where: { name: tipo } });
+    if (!role) {
+      return res.status(400).json({ message: 'Tipo de usuario inválido' });
+    }
+
+    // 2) Hashear la contraseña
+    const hash = await bcrypt.hash(password, 10);
+
+    // 3) Crear usuario base
+    const user = await User.create({ nombre, email, password: hash });
+
+    // 4) Asignar rol en la tabla intermedia user_roles
+    await user.setRoles([role]);
+
+    // 5) Recuperar usuario con sus roles para la respuesta
+    const created = await User.findByPk(user.id, { include: 'Roles' });
+
+    // 6) (Opcional) Enviar email de confirmación...
+    // await sendEmail(email, 'Bienvenido', 'Gracias por registrarte');
+
+    res.status(201).json(created);
+  } catch (err) {
+    if (err.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ message: 'El correo ya está en uso' });
+    }
+    next(err);
+  }
 };
 
 // Login (genera JWT)
