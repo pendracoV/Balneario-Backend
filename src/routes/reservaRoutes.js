@@ -4,7 +4,7 @@ const auth = require('../middleware/auth');
 const permit = require('../middleware/permit');
 const reservaController = require('../controllers/reservaController');
 
-// Listar reservas
+// Listar reservas(personal, cliente)
 router.get(
   '/',
   auth,
@@ -12,7 +12,7 @@ router.get(
   reservaController.list
 );
 
-// Obtener por ID
+// Obtener por ID (personal, cliente)
 router.get(
   '/:id',
   auth,
@@ -20,11 +20,11 @@ router.get(
   reservaController.getById
 );
 
-// Crear reserva (cliente)
+// Crear reserva (cliente, personal)
 router.post(
   '/',
   auth,
-  permit('cliente'),
+  permit('cliente','personal'),
   reservaController.create
 );
 
@@ -40,7 +40,7 @@ router.put(
 router.delete(
   '/:id',
   auth,
-  permit('cliente'),
+  permit('cliente','personal'),
   reservaController.remove
 );
 

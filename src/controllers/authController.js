@@ -8,7 +8,10 @@ const { Op } = require('sequelize');
 
 exports.register = async (req, res, next) => {
   try {
-    const { nombre, email, password, tipo } = req.body;
+    const { nombre, email, password, tipo, documento } = req.body;
+    if (!documento) {
+      return res.status(400).json({ message: 'Debes enviar tu documento' });
+    }
 
     // 1) Validar rol
     const role = await Role.findOne({ where: { name: tipo } });
@@ -20,7 +23,7 @@ exports.register = async (req, res, next) => {
     const hash = await bcrypt.hash(password, 10);
 
     // 3) Crear usuario base
-    const user = await User.create({ nombre, email, password: hash });
+    const user = await User.create({ nombre, email, password: hash, documento });
 
     // 4) Asignar rol en la tabla intermedia user_roles
     await user.setRoles([role]);

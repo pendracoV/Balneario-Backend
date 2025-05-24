@@ -1,5 +1,10 @@
 const app = require('./src/app');
 const sequelize = require('./src/config/db');
+// Al principio
+
+
+// Después configuras tu app...
+
 
 (async () => {
   // Sincroniza tablas (sin borrarlas)
