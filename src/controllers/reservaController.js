@@ -4,6 +4,8 @@ const Reserva      = require('../models/Reserva');
 const TipoReserva  = require('../models/TipoReserva');
 const Feriado      = require('../models/Feriado');
 const Servicio     = require('../models/Servicio');
+const Turno = require('../models/Turno');
+
 
 const MIN_PRIVADA_SEMANA    = 10;
 const PRECIO_PRIVADA_SEMANA = 20000;
@@ -82,39 +84,41 @@ exports.create = async (req, res, next) => {
       clienteEmail: emailBody
     } = req.body;
 
-    // 1) Datos personales según rol...
+    // 1) Datos personales según rol
     const isPersonal = req.user.Roles.some(r => r.name === 'personal');
     let documento, clienteNombre, clienteEmail;
     if (isPersonal) {
       if (!docBody || !nombreBody || !emailBody) {
-        return res.status(400).json({ message: 'Usuario personal debe enviar documento, clienteNombre y clienteEmail' });
+        return res.status(400).json({
+          message: 'Usuario personal debe enviar documento, clienteNombre y clienteEmail'
+        });
       }
-      documento = docBody; clienteNombre = nombreBody; clienteEmail = emailBody;
+      documento     = docBody;
+      clienteNombre = nombreBody;
+      clienteEmail  = emailBody;
     } else {
-      documento = req.user.documento;
+      documento     = req.user.documento;
       clienteNombre = req.user.nombre;
-      clienteEmail = req.user.email;
+      clienteEmail  = req.user.email;
     }
 
-    // 2) Validar tipo y horario...
+    // 2) Validar tipo y horario
     const tipo = await TipoReserva.findByPk(tipoReservaId);
     if (!tipo) return res.status(400).json({ message: 'Tipo de reserva inválido' });
+
     const validHorario = Object.values(HORARIOS).flat()
       .some(h => h.start === horarioInicio && h.end === horarioFin);
     if (!validHorario) return res.status(400).json({ message: 'Horario inválido' });
 
-    // 3) Días y aforo individual...
+    // 3) Días y aforo individual
     const dias = contarDias(fechaInicio, fechaFin);
     if (personas > AFORO_MAX) {
       return res.status(400).json({ message: 'Excede aforo máximo por reserva' });
     }
 
-    // === REQ-26: Validar aforo global ===
+    // REQ-26: aforo global
     const totalConcurrentes = await Reserva.sum('personas', {
-      where: {
-        fecha_inicio:   fechaInicio,
-        horario_inicio: horarioInicio
-      }
+      where: { fecha_inicio: fechaInicio, horario_inicio: horarioInicio }
     }) || 0;
     if (totalConcurrentes + personas > AFORO_MAX) {
       return res.status(400).json({
@@ -122,12 +126,24 @@ exports.create = async (req, res, next) => {
       });
     }
 
-    // 4) Cargar servicios y verificar capacidad por servicio...
+    // REQ-27: disponibilidad de personal
+    const turnosAsignados = await Turno.count({
+      where: { fecha: fechaInicio, horario_inicio: horarioInicio, horario_fin: horarioFin }
+    });
+    if (turnosAsignados === 0) {
+      return res.status(409).json({
+        message: 'No hay personal disponible para atender esa reserva en el slot seleccionado'
+      });
+    }
+
+    // 4) Verificar servicios
     const servicioInstances = await Servicio.findAll({ where: { nombre: servicios } });
-    const serviciosMap = servicioInstances.reduce((m,s) => (m[s.nombre]=s, m), {});
+    const serviciosMap = servicioInstances.reduce((m,s) => (m[s.nombre] = s, m), {});
     for (const nombreServ of servicios) {
       const serv = serviciosMap[nombreServ];
-      if (!serv) return res.status(400).json({ message: `Servicio inválido: ${nombreServ}` });
+      if (!serv) {
+        return res.status(400).json({ message: `Servicio inválido: ${nombreServ}` });
+      }
       const usadas = await Reserva.count({
         include: [{ model: Servicio, as: 'servicios', where: { id: serv.id } }],
         where: { fecha_inicio: fechaInicio, horario_inicio: horarioInicio }
@@ -139,22 +155,35 @@ exports.create = async (req, res, next) => {
       }
     }
 
-    // 5) Calcular precio base y cargo extra...
-    const finsem = await esFinDeSemanaOFestivo(fechaInicio);
-    let precioPorPersona = 0, cargo = 0;
-    if (tipo.nombre === 'privada') {
-      if (finsem) {
-        precioPorPersona = PRECIO_PRIVADA_FINSEM;
-        if (personas < MIN_PRIVADA_FINSEM) cargo = CARGO_EXTRA;
-      } else {
-        precioPorPersona = PRECIO_PRIVADA_SEMANA;
-        if (personas < MIN_PRIVADA_SEMANA) cargo = CARGO_EXTRA;
-      }
-    }
-    const precioBase = precioPorPersona * personas * dias;
-    let precioTotal = precioBase + cargo;
+    // —————————————————————————————————————————————————————————
+    //      REQ-36: CÁLCULO DE TARIFA CON INCREMENTO ANUAL
+    // —————————————————————————————————————————————————————————
+    const hoy       = new Date();
+    const fechaRes  = new Date(fechaInicio);
+    const yearsDiff = fechaRes.getFullYear() - hoy.getFullYear();
+    // Factor acumulado de 1.2^n (20% por año)
+    const factor    = yearsDiff > 0 ? Math.pow(1.2, yearsDiff) : 1;
 
-    // 6) Sumar costo de servicios...
+    // Determinar tarifa por persona (con factor) y posible cargo extra
+    const finsem = await esFinDeSemanaOFestivo(fechaInicio);
+    let precioPorPersona = 0;
+    let cargo = 0;
+    // Aplica factor a las constantes originales
+    const tarifaSemana = PRECIO_PRIVADA_SEMANA * factor;
+    const tarifaFinsem = PRECIO_PRIVADA_FINSEM  * factor;
+
+    if (tipo.nombre === 'privada') {
+      precioPorPersona = finsem ? tarifaFinsem : tarifaSemana;
+      // cargo extra si no alcanza mínimo
+      if (finsem && personas < MIN_PRIVADA_FINSEM) cargo = CARGO_EXTRA;
+      if (!finsem && personas < MIN_PRIVADA_SEMANA) cargo = CARGO_EXTRA;
+    }
+
+    // 5) Precio base y total
+    const precioBase  = precioPorPersona * personas * dias;
+    let precioTotal   = precioBase + cargo;
+
+    // 6) Sumar costo de servicios
     let costoServicios = 0;
     for (const serv of servicioInstances) {
       const mult = serv.nombre === 'cuarto' ? dias : 1;
@@ -205,10 +234,8 @@ exports.create = async (req, res, next) => {
       cliente_id:      req.user.id
     });
 
-    // 10) Asociar servicios (REQ-24 y REQ-25 por primera vez)
     await nueva.addServicios(servicioInstances);
 
-    // 11) Devolver con relaciones
     const conRelaciones = await Reserva.findByPk(nueva.id, {
       include: [
         { model: TipoReserva, as: 'tipo' },
