@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('./models');
 const express = require('express');
 const sequelize = require('./config/db');
 
@@ -15,7 +16,6 @@ app.use(express.json());
 // Rutas
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/reservas', reservaRoutes);
 app.use('/api/reservas',    reservaRoutes);
 app.use('/api/inventarios', inventarioRoutes);
 app.use('/api/pagos',       pagoRoutes);

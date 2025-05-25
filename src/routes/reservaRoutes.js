@@ -28,6 +28,7 @@ router.post(
   reservaController.create
 );
 
+
 // Actualizar estado (personal)
 router.put(
   '/:id',
@@ -42,6 +43,23 @@ router.delete(
   auth,
   permit('cliente','personal'),
   reservaController.remove
+);
+
+
+// PATCH para actualizar solo personas
+router.patch(
+  '/:id/personas',
+  auth,
+  permit('admin','personal','cliente'),
+  reservaController.updatePersonas  // <-- revisa que este método exista
+);
+
+// PATCH para añadir servicios a reserva existente
+router.patch(
+  '/:id/servicios',
+  auth,
+  permit('admin','personal','cliente'),
+  reservaController.updateServicios // <-- revisa que este método exista
 );
 
 module.exports = router;

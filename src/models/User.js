@@ -14,17 +14,4 @@ const User = sequelize.define('User', {
 });
 
 // Asociación muchos-a-muchos con alias
-User.belongsToMany(Role, {
-  through: 'user_roles',
-  foreignKey: 'user_id',
-  otherKey: 'role_id',
-  as: 'Roles'              
-});
-Role.belongsToMany(User, {
-  through: 'user_roles',
-  foreignKey: 'role_id',
-  otherKey: 'user_id',
-  as: 'Users'
-});
-
 module.exports = User;
