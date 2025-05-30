@@ -1,13 +1,49 @@
-const Reserva = require('../models/Reserva');
-const Pago    = require('../models/Pago');
-const PDFDocument = require('pdfkit');
-const fs   = require('fs');
-const path = require('path');
-const nodemailer = require('nodemailer');
+// src/controllers/pagoController.js
+
+const Reserva       = require('../models/Reserva');
+const Pago          = require('../models/Pago');
+const PDFDocument   = require('pdfkit');
+const fs            = require('fs');
+const path          = require('path');
+const nodemailer    = require('nodemailer');
 
 const REEMBOLSO_PORC = 0.60; // 60%
 
+// GET /api/pagos
+// - Cliente: sólo sus propios pagos
+// - Personal/Admin: todos los pagos
+exports.getPagos = async (req, res, next) => {
+  try {
+    const { role, id: userId } = req.user;
+    let pagos;
+
+    if (role === 'cliente') {
+      pagos = await Pago.findAll({
+        include: [{
+          model: Reserva,
+          as: 'reserva',
+          where: { cliente_id: userId },
+          attributes: ['id','cliente_id','fecha_inicio','fecha_fin']
+        }]
+      });
+    } else {
+      pagos = await Pago.findAll({
+        include: [{
+          model: Reserva,
+          as: 'reserva',
+          attributes: ['id','cliente_id','fecha_inicio','fecha_fin']
+        }]
+      });
+    }
+
+    res.json(pagos);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // POST /api/pagos
+// Crea un pago y marca la reserva como confirmada
 exports.createPago = async (req, res, next) => {
   try {
     const { reservaId, metodo_pago } = req.body;
@@ -31,6 +67,10 @@ exports.createPago = async (req, res, next) => {
       estado:      'completado'
     });
 
+    // Marcar la reserva como confirmada
+    reserva.estado = 'confirmada';
+    await reserva.save();
+
     // Preparar ruta del comprobante
     const filePath = path.join(__dirname, `../../comprobantes/comprobante_${pago.id}.pdf`);
     const dir = path.dirname(filePath);
@@ -52,7 +92,7 @@ exports.createPago = async (req, res, next) => {
       .text(`Estado: ${pago.estado}`);
     doc.end();
 
-    // Enviar email (ajusta tus credenciales SMTP en createTransport)
+    // Enviar email (configura tus credenciales SMTP aquí)
     const transporter = nodemailer.createTransport({ /* datos SMTP */ });
     try {
       await transporter.sendMail({
@@ -64,22 +104,21 @@ exports.createPago = async (req, res, next) => {
       });
     } catch (mailErr) {
       console.error('Error enviando email:', mailErr);
-      // No abortamos el flujo; devolvemos la respuesta de todas formas.
+      // No interrumpimos el flujo
     }
 
-    // Responder una única vez
+    // Responder
     res.status(201).json({
       pago,
       comprobanteUrl: `/comprobantes/comprobante_${pago.id}.pdf`
     });
-
   } catch (err) {
     next(err);
   }
 };
 
 // POST /api/pagos/reembolso/:reservaId
-// Calcular y registrar reembolso si la cancelación es 6h antes
+// Genera un reembolso si la cancelación es con al menos 6h de antelación
 exports.reembolsar = async (req, res, next) => {
   try {
     const { reservaId } = req.params;
@@ -91,7 +130,7 @@ exports.reembolsar = async (req, res, next) => {
       return res.status(400).json({ message: 'No hay pago completado para esa reserva' });
     }
 
-    // Verificar el plazo de 6 horas...
+    // Verificar plazo de 6 horas
     const now = new Date();
     const inicio = new Date(`${reserva.fecha_inicio}T${reserva.horario_inicio}`);
     const diffH = (inicio - now) / (1000 * 60 * 60);
@@ -111,8 +150,8 @@ exports.reembolsar = async (req, res, next) => {
       reembolso
     });
 
-    // **Aquí actualizamos el estado de la reserva**
-    reserva.estado = 'Cancelado';
+    // Actualizar estado de la reserva a cancelada
+    reserva.estado = 'cancelada';
     await reserva.save();
 
     res.json({ pagoReembolso, reserva });
