@@ -44,15 +44,33 @@ exports.register = async (req, res, next) => {
 };
 
 // Login (genera JWT)
+// src/controllers/authController.js
+
 exports.login = async (req, res) => {
   const { email, password } = req.body;
-  const user = await User.findOne({ where: { email }, include: 'Roles' });
+  const user = await User.findOne({ 
+    where: { email },
+    include: 'Roles'    // ya lo tenías
+  });
   if (!user || !(await bcrypt.compare(password, user.password))) {
     return res.status(401).json({ message: 'Credenciales inválidas' });
   }
-  const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '8h' });
+
+  // Extraemos el nombre del rol (asumiendo que cada usuario tiene exactamente un rol)
+  const role = user.Roles.length
+    ? user.Roles[0].name
+    : 'cliente';
+
+  // Firmamos el token incluyendo id y rol
+  const token = jwt.sign(
+    { id: user.id, role }, 
+    process.env.JWT_SECRET,
+    { expiresIn: '8h' }
+  );
+
   res.json({ token });
 };
+
 
 // REQ-7: Solicitar recuperación de contraseña
 exports.forgotPassword = async (req, res) => {
