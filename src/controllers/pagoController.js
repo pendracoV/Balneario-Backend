@@ -78,6 +78,44 @@ exports.createPago = async (req, res, next) => {
   }
 };
 
+
+
+// GET /api/pagos
+// - Cliente: sólo sus pagos
+// - Personal/Admin: todos los pagos
+exports.getPagos = async (req, res, next) => {
+  try {
+    const { role, id: userId } = req.user;
+    let pagos;
+
+    if (role === 'cliente') {
+      // Traer sólo los pagos cuyas reservas son del cliente
+      pagos = await Pago.findAll({
+        include: [{
+          model: Reserva,
+          as: 'reserva',
+          where: { cliente_id: userId },
+          attributes: ['id','cliente_id','fecha_inicio','fecha_fin']
+        }]
+      });
+    } else {
+      // personal o admin ven todos
+      pagos = await Pago.findAll({
+        include: [{
+          model: Reserva,
+          as: 'reserva',
+          attributes: ['id','cliente_id','fecha_inicio','fecha_fin']
+        }]
+      });
+    }
+
+    res.json(pagos);
+  } catch (err) {
+    next(err);
+  }
+};
+
+
 // POST /api/pagos/reembolso/:reservaId
 // Calcular y registrar reembolso si la cancelación es 6h antes
 exports.reembolsar = async (req, res, next) => {
