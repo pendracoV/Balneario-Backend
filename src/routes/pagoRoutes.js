@@ -1,10 +1,19 @@
-const express = require('express');
-const router  = express.Router();
-const auth    = require('../middleware/auth');
-const permit  = require('../middleware/permit');
+// src/routes/pagoRoutes.js
+const express        = require('express');
+const router         = express.Router();
+const auth           = require('../middleware/auth');
+const permit         = require('../middleware/permit');
 const pagoController = require('../controllers/pagoController');
 
-// Procesar pago al crear reserva (REQ-32, REQ-34)
+// Listar pagos
+router.get(
+  '/',
+  auth,
+  permit('cliente','personal','admin'),
+  pagoController.getPagos
+);
+
+// Procesar pago
 router.post(
   '/',
   auth,
@@ -12,7 +21,7 @@ router.post(
   pagoController.createPago
 );
 
-// Generar reembolso (REQ-33)
+// Generar reembolso
 router.post(
   '/reembolso/:reservaId',
   auth,
